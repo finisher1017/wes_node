@@ -7,10 +7,8 @@ const uuid = require('uuid');
 const multerOptions = {
   storage: multer.memoryStorage(),
   fileFilter(req, file, next) {
-    console.log("A file is in the filter");
     const isPhoto = file.mimetype.startsWith('image/');
     if(isPhoto) {
-      console.log("This is a photo");
       next(null, true);
     } else {
       next({message: 'File type is not allowed'}, false);
@@ -32,16 +30,18 @@ exports.upload = multer(multerOptions).single('photo');
 exports.resize = async (req, res, next) => {
   // Check if there is no new file to resize
   if (!req.file) {
-    console.log("There is no file");
     next(); // Skip to the next middleware
     return;
   }
-  if(req.file) {
-    console.log("It exists");
-  } else {
-    console.log("It doesn't exist");
-  }
-  console.log(req.file);
+  
+  const extension = req.file.mimetype.split('/')[1];
+  req.body.photo = `${uuid.v4()}.${extension}`;
+  // now we resize
+  const photo = await jimp.read(req.file.buffer);
+  await photo.resize(800, jimp.AUTO);
+  await photo.write(`./public/uploads/${req.body.photo}`);
+  // once we have written to photo to our file system, keep going!
+  next();
 };
 
 exports.createStore = async (req, res) => {
@@ -79,4 +79,19 @@ exports.updateStore = async (req, res) => {
             <a href=/stores/${store.slug}'>View Store</a>`);
   res.redirect(`/store/${store._id}/edit`);
   
+}
+
+exports.getStoreBySlug = async (req, res, next) => {
+  const store = await Store.findOne({slug: req.params.slug})
+  if(!store) return next();
+  res.render('store', { store, title: store.name });
+}
+
+exports.getStoresByTag = async (req, res, next) => {
+  const tag = req.params.tag;
+  const tagQuery = tag || { $exists: true };
+  const tagsPromise = Store.getTagsList();
+  const storesPromise = Store.find({tags: tagQuery});
+  const [tags, stores] = await Promise.all([tagsPromise, storesPromise]);
+  res.render('tag', { tags, title: 'Tags', tag, stores });
 }
